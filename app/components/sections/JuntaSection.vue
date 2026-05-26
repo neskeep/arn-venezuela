@@ -2,22 +2,20 @@
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Draggable } from "gsap/Draggable";
-import type { MiembroJunta, ApiListResponse } from "~~/shared/types";
 
-const { data: response } = await useFetch<ApiListResponse<MiembroJunta>>("/api/junta");
-const members = computed(() => response.value?.data ?? []);
+const members = [
+  { id: 1, nombre: "Miembro 1", cargo: "Presidente", foto_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&q=80" },
+  { id: 2, nombre: "Miembro 2", cargo: "Vicepresidente", foto_url: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=500&q=80" },
+  { id: 3, nombre: "Miembro 3", cargo: "Secretaria", foto_url: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=500&q=80" },
+  { id: 4, nombre: "Miembro 4", cargo: "Tesorero", foto_url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=500&q=80" },
+];
 
 // Quadruple members to fill columns without gaps
-const col1Members = computed(() => {
-  const m = members.value;
-  return [...m, ...m, ...m, ...m];
-});
-const col2Members = computed(() => {
-  const m = members.value;
-  // Reverse order for visual variety between columns
-  const reversed = [...m].reverse();
+const col1Members = [...members, ...members, ...members, ...members];
+const col2Members = (() => {
+  const reversed = [...members].reverse();
   return [...reversed, ...reversed, ...reversed, ...reversed];
-});
+})();
 
 const sectionRef = ref<HTMLElement | null>(null);
 const col1Ref = ref<HTMLElement | null>(null);
@@ -32,7 +30,7 @@ onMounted(() => {
   nextTick(() => {
     if (!sectionRef.value || !col1Ref.value || !col2Ref.value) return;
 
-    const containerH = col1Ref.value.parentElement!.parentElement!.clientHeight;
+    const containerH = col1Ref.value.parentElement?.parentElement?.clientHeight ?? 0;
     const col1H = col1Ref.value.scrollHeight;
     const col2H = col2Ref.value.scrollHeight;
 
@@ -89,7 +87,7 @@ onMounted(() => {
 
 <template>
   <section
-    v-if="members.length"
+    v-if="members.length > 0"
     id="junta-directiva"
     ref="sectionRef"
     class="relative overflow-hidden bg-arn-dark py-20 md:py-28"

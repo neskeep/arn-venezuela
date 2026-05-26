@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import type { Aliado, ApiListResponse } from "~~/shared/types";
 
-const { data: response } = await useFetch<ApiListResponse<Aliado>>("/api/aliados");
-const aliados = computed(() => response.value?.data ?? []);
+const aliados = [
+  { id: 1, nombre: "Fundación Avanzar", logo_url: "/images/aliados/logo-1.svg", website_url: null },
+  { id: 2, nombre: "Centro Bienestar", logo_url: "/images/aliados/logo-2.svg", website_url: null },
+  { id: 3, nombre: "Nexus Group", logo_url: "/images/aliados/logo-3.svg", website_url: null },
+  { id: 4, nombre: "Impulsa Venezuela", logo_url: "/images/aliados/logo-4.svg", website_url: null },
+  { id: 5, nombre: "Vértice Consulting", logo_url: "/images/aliados/logo-5.svg", website_url: null },
+  { id: 6, nombre: "Altum Partners", logo_url: "/images/aliados/logo-6.svg", website_url: null },
+  { id: 7, nombre: "Red Vital Foundation", logo_url: "/images/aliados/logo-7.svg", website_url: null },
+  { id: 8, nombre: "Tercer Sector", logo_url: "/images/aliados/logo-8.svg", website_url: null },
+];
 
-const row1 = computed(() => aliados.value.filter((_, i) => i % 2 === 0));
-const row2 = computed(() => aliados.value.filter((_, i) => i % 2 === 1));
+const row1 = aliados.filter((_, i) => i % 2 === 0);
+const row2 = aliados.filter((_, i) => i % 2 === 1);
 
 const sectionRef = ref<HTMLElement | null>(null);
 const track1Ref = ref<HTMLElement | null>(null);

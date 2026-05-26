@@ -1,10 +1,45 @@
 <script setup lang="ts">
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import type { Evento, ApiListResponse } from "~~/shared/types";
 
-const { data: response } = await useFetch<ApiListResponse<Evento>>("/api/eventos");
-const eventos = computed(() => response.value?.data ?? []);
+const eventos = [
+  {
+    id: 1,
+    titulo: "ARN Edición I",
+    descripcion: "Primera edición del encuentro. Un espacio de conexión espiritual y activación de propósito para líderes de distintas áreas.",
+    fecha: "2024",
+    imagen_url: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1920&q=80",
+    estado: "pasado",
+    tagline: "Conexión · Propósito · Activación",
+    asistentes: 120,
+    ubicacion: null,
+    highlights: '["Líderes de 8 ciudades reunidos","Talleres de activación de propósito","Primera red de vectores de cambio"]',
+  },
+  {
+    id: 2,
+    titulo: "ARN Edición II",
+    descripcion: "Segunda edición con mayor alcance. Comunidades de múltiples ciudades conectadas por una misma visión de transformación.",
+    fecha: "2025",
+    imagen_url: "https://images.unsplash.com/photo-1511578314322-379afb476865?w=1920&q=80",
+    estado: "pasado",
+    tagline: "Expansión · Comunidad · Visión",
+    asistentes: 350,
+    ubicacion: null,
+    highlights: '["15 ciudades conectadas en simultáneo","Paneles con referentes nacionales","Lanzamiento del programa de mentorías"]',
+  },
+  {
+    id: 3,
+    titulo: "ARN Edición III",
+    descripcion: "La edición más ambiciosa. Expandiendo el mensaje a nuevas regiones y consolidando la red de vectores de esperanza.",
+    fecha: "2026",
+    imagen_url: "https://images.unsplash.com/photo-1523580494863-6f3031224c94?w=1920&q=80",
+    estado: "activo",
+    tagline: "Consolidación · Regiones · Esperanza",
+    asistentes: 600,
+    ubicacion: null,
+    highlights: '["Alcance en 4 nuevas regiones","Alianzas estratégicas con fundaciones","Formación de 50 vectores comunitarios"]',
+  },
+];
 
 const sectionRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
