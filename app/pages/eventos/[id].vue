@@ -18,7 +18,12 @@ const evento = computed(() => response.value!.data);
 const { data: relatedResponse } = await useFetch<{ data: Evento[] }>(
   `/api/eventos/${route.params.id}/related`
 );
-const relatedEvents = computed(() => relatedResponse.value?.data ?? []);
+const allEvents = computed(() => {
+  const related = relatedResponse.value?.data ?? [];
+  // Build the full timeline including current event
+  const all = [...related, evento.value].sort((a, b) => a.orden - b.orden);
+  return all;
+});
 
 // — Parsers
 function parseJSON<T>(raw: string | null): T[] {
@@ -34,6 +39,9 @@ const highlights = computed(() => parseJSON<string>(evento.value.highlights));
 const galeria = computed(() => parseJSON<string>(evento.value.galeria));
 const programa = computed(() => parseJSON<ProgramaItem>(evento.value.programa));
 
+// Only show top 4 program items as editorial highlights, not the full schedule
+const programaHighlights = computed(() => programa.value.slice(0, 4));
+
 function getYouTubeId(url: string): string | null {
   const match = url.match(
     /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
@@ -45,8 +53,8 @@ const videoId = computed(() =>
   evento.value.video_url ? getYouTubeId(evento.value.video_url) : null
 );
 
-const isUpcoming = computed(() => evento.value.estado === "proximo");
-const isActive = computed(() => evento.value.estado === "activo");
+const isPast = computed(() => evento.value.estado === "pasado");
+const isLive = computed(() => evento.value.estado === "activo" || evento.value.estado === "proximo");
 
 // — SEO
 useHead({
@@ -54,16 +62,14 @@ useHead({
   meta: [
     {
       name: "description",
-      content: () => evento.value.descripcion || `Evento ${evento.value.titulo} de ARN Venezuela`,
+      content: () => evento.value.descripcion || `${evento.value.titulo} — ARN Venezuela`,
     },
   ],
 });
 
 // — Refs
-const heroRef = ref<HTMLElement | null>(null);
-const statsRef = ref<HTMLElement | null>(null);
-const stickyBarRef = ref<HTMLElement | null>(null);
-const showStickyBar = ref(false);
+const hookRef = ref<HTMLElement | null>(null);
+const impactRef = ref<HTMLElement | null>(null);
 
 // — Lightbox
 const lightboxOpen = ref(false);
@@ -89,20 +95,28 @@ function prevImage() {
     (lightboxIndex.value - 1 + galeria.value.length) % galeria.value.length;
 }
 
+function handleKeydown(e: KeyboardEvent) {
+  if (!lightboxOpen.value) return;
+  if (e.key === "Escape") closeLightbox();
+  if (e.key === "ArrowRight") nextImage();
+  if (e.key === "ArrowLeft") prevImage();
+}
+
 // — Animations
 onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
+  window.addEventListener("keydown", handleKeydown);
 
   nextTick(() => {
-    // Hero parallax
-    if (heroRef.value) {
-      const img = heroRef.value.querySelector("img");
+    // ZONE 1: Hook — dramatic delayed reveal
+    if (hookRef.value) {
+      const img = hookRef.value.querySelector("[data-hook-img]");
       if (img) {
         gsap.to(img, {
-          yPercent: 20,
+          yPercent: 15,
           ease: "none",
           scrollTrigger: {
-            trigger: heroRef.value,
+            trigger: hookRef.value,
             start: "top top",
             end: "bottom top",
             scrub: true,
@@ -110,63 +124,76 @@ onMounted(() => {
         });
       }
 
-      // Hero content reveal
-      const heroContent = heroRef.value.querySelectorAll("[data-hero-reveal]");
+      // Staggered text reveal — slower, more dramatic than before
+      const reveals = hookRef.value.querySelectorAll("[data-hook-reveal]");
       gsap.fromTo(
-        heroContent,
-        { opacity: 0, y: 40 },
+        reveals,
+        { opacity: 0, y: 50 },
         {
           opacity: 1,
           y: 0,
-          duration: 0.8,
-          ease: "power2.out",
-          stagger: 0.12,
-          delay: 0.2,
+          duration: 1,
+          ease: "power3.out",
+          stagger: 0.15,
+          delay: 0.4,
         }
       );
     }
 
-    // Sticky bar on scroll past hero
-    if (heroRef.value) {
-      ScrollTrigger.create({
-        trigger: heroRef.value,
-        start: "bottom top",
-        onEnter: () => (showStickyBar.value = true),
-        onLeaveBack: () => (showStickyBar.value = false),
-      });
-    }
-
-    // Animate sections on scroll
-    document.querySelectorAll("[data-scroll-reveal]").forEach((el) => {
+    // ZONE 2: Experience pillars — stagger from left
+    const pillars = document.querySelectorAll("[data-pillar]");
+    if (pillars.length) {
       gsap.fromTo(
-        el,
-        { opacity: 0, y: 30 },
+        pillars,
+        { opacity: 0, x: -30 },
         {
           opacity: 1,
-          y: 0,
+          x: 0,
           duration: 0.7,
           ease: "power2.out",
+          stagger: 0.12,
           scrollTrigger: {
-            trigger: el,
-            start: "top 85%",
+            trigger: pillars[0],
+            start: "top 80%",
             once: true,
           },
         }
       );
-    });
+    }
 
-    // Stats counter animation
-    if (statsRef.value) {
-      const counters = statsRef.value.querySelectorAll("[data-count]");
-      counters.forEach((counter) => {
+    // ZONE 3: Proof — mosaic images scale in
+    const mosaicItems = document.querySelectorAll("[data-mosaic]");
+    if (mosaicItems.length) {
+      gsap.fromTo(
+        mosaicItems,
+        { opacity: 0, scale: 0.92 },
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          ease: "power2.out",
+          stagger: 0.1,
+          scrollTrigger: {
+            trigger: mosaicItems[0],
+            start: "top 80%",
+            once: true,
+          },
+        }
+      );
+    }
+
+    // ZONE 4: Impact — counter for the ONE key stat
+    if (impactRef.value) {
+      const counter = impactRef.value.querySelector("[data-impact-count]");
+      if (counter) {
         const target = parseInt(
-          (counter as HTMLElement).dataset.count || "0",
+          (counter as HTMLElement).dataset.impactCount || "0",
           10
         );
         const obj = { val: 0 };
         gsap.to(obj, {
           val: target,
-          duration: 2,
+          duration: 2.5,
           ease: "power2.out",
           snap: { val: 1 },
           scrollTrigger: {
@@ -178,64 +205,49 @@ onMounted(() => {
             (counter as HTMLElement).textContent = obj.val.toLocaleString();
           },
         });
-      });
+      }
     }
 
-    // Timeline items stagger
-    const timelineItems = document.querySelectorAll("[data-timeline-item]");
-    if (timelineItems.length) {
+    // ZONE 6: Timeline ribbon — horizontal reveal
+    const timelineNodes = document.querySelectorAll("[data-timeline-node]");
+    if (timelineNodes.length) {
       gsap.fromTo(
-        timelineItems,
-        { opacity: 0, x: -20 },
-        {
-          opacity: 1,
-          x: 0,
-          duration: 0.6,
-          ease: "power2.out",
-          stagger: 0.1,
-          scrollTrigger: {
-            trigger: timelineItems[0],
-            start: "top 85%",
-            once: true,
-          },
-        }
-      );
-    }
-
-    // Gallery items
-    const galleryItems = document.querySelectorAll("[data-gallery-item]");
-    if (galleryItems.length) {
-      gsap.fromTo(
-        galleryItems,
-        { opacity: 0, y: 20, scale: 0.95 },
+        timelineNodes,
+        { opacity: 0, y: 15 },
         {
           opacity: 1,
           y: 0,
-          scale: 1,
           duration: 0.5,
           ease: "power2.out",
           stagger: 0.08,
           scrollTrigger: {
-            trigger: galleryItems[0],
-            start: "top 85%",
+            trigger: timelineNodes[0],
+            start: "top 90%",
             once: true,
           },
         }
       );
     }
+
+    // Generic zone reveals — each zone gets ONE reveal, not per-element
+    document.querySelectorAll("[data-zone-reveal]").forEach((el) => {
+      gsap.fromTo(
+        el,
+        { opacity: 0, y: 25 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.8,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: el,
+            start: "top 82%",
+            once: true,
+          },
+        }
+      );
+    });
   });
-});
-
-// Keyboard navigation for lightbox
-function handleKeydown(e: KeyboardEvent) {
-  if (!lightboxOpen.value) return;
-  if (e.key === "Escape") closeLightbox();
-  if (e.key === "ArrowRight") nextImage();
-  if (e.key === "ArrowLeft") prevImage();
-}
-
-onMounted(() => {
-  window.addEventListener("keydown", handleKeydown);
 });
 
 onUnmounted(() => {
@@ -245,408 +257,497 @@ onUnmounted(() => {
 
 <template>
   <div v-if="evento">
-    <!-- ═══════════════════════════════════════════
-         1. HERO — Fullscreen immersive
-         ═══════════════════════════════════════════ -->
+
+    <!-- ═══════════════════════════════════════════════════
+         ZONE 1: THE HOOK — fullscreen, immersive, minimal
+         Two personalities: upcoming = manifesto / past = memory
+         ═══════════════════════════════════════════════════ -->
     <section
-      ref="heroRef"
-      class="relative flex min-h-screen items-end overflow-hidden bg-arn-dark"
+      ref="hookRef"
+      class="relative flex min-h-screen items-center overflow-hidden bg-arn-dark"
     >
-      <!-- Background image -->
+      <!-- Background image with parallax -->
       <img
         v-if="evento.imagen_url"
+        data-hook-img
         :src="evento.imagen_url"
         :alt="evento.titulo"
         class="absolute inset-0 h-[120%] w-full object-cover"
+        :class="isPast ? 'opacity-50' : 'opacity-30'"
       />
-      <!-- Gradient overlays -->
-      <div class="absolute inset-0 bg-gradient-to-t from-arn-dark via-arn-dark/60 to-arn-dark/10" />
-      <div class="absolute inset-0 bg-gradient-to-r from-arn-dark/40 to-transparent" />
-
-      <!-- Content -->
-      <div class="relative w-full px-6 pb-16 md:pb-24 lg:px-8">
-        <div class="mx-auto max-w-(--container-site)">
-          <!-- Breadcrumb -->
-          <nav
-            data-hero-reveal
-            class="mb-10 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-white/30"
-          >
-            <NuxtLink to="/" class="transition-colors hover:text-white/60">Inicio</NuxtLink>
-            <span>/</span>
-            <NuxtLink to="/#eventos" class="transition-colors hover:text-white/60">Experiencias</NuxtLink>
-            <span>/</span>
-            <span class="text-white/50">{{ evento.titulo }}</span>
-          </nav>
-
-          <div class="grid gap-8 md:grid-cols-[1fr_auto] md:items-end lg:gap-16">
-            <div>
-              <!-- Meta row: date + time + status badge -->
-              <div data-hero-reveal class="flex flex-wrap items-center gap-3">
-                <span class="inline-block border border-white/25 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/60">
-                  {{ evento.fecha }}
-                </span>
-                <span
-                  v-if="evento.hora"
-                  class="text-[11px] uppercase tracking-[0.15em] text-white/40"
-                >
-                  {{ evento.hora }}
-                </span>
-                <span
-                  v-if="isUpcoming || isActive"
-                  :class="[
-                    'inline-block rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em]',
-                    isActive ? 'bg-arn-blue/20 text-arn-blue' : 'bg-amber-500/20 text-amber-400'
-                  ]"
-                >
-                  {{ isActive ? 'Activo' : 'Próximo' }}
-                </span>
-              </div>
-
-              <!-- Tagline -->
-              <p
-                v-if="evento.tagline"
-                data-hero-reveal
-                class="mt-4 text-[11px] uppercase tracking-[0.2em] text-arn-blue"
-              >
-                {{ evento.tagline }}
-              </p>
-
-              <!-- Title — massive editorial -->
-              <h1
-                data-hero-reveal
-                class="mt-4 font-agency text-[clamp(3rem,9vw,7rem)] uppercase leading-[0.88] tracking-[-0.03em] text-white"
-              >
-                {{ evento.titulo }}
-              </h1>
-
-              <!-- Location -->
-              <div
-                v-if="evento.ubicacion"
-                data-hero-reveal
-                class="mt-5 flex items-center gap-2.5 text-sm text-white/35"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                {{ evento.ubicacion }}
-              </div>
-
-              <!-- CTA in hero for upcoming events -->
-              <a
-                v-if="(isUpcoming || isActive) && evento.cta_url"
-                :href="evento.cta_url"
-                target="_blank"
-                rel="noopener"
-                data-hero-reveal
-                class="mt-8 inline-flex items-center gap-3 bg-arn-blue px-7 py-3.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-white transition-all hover:bg-arn-blue/85 hover:shadow-lg hover:shadow-arn-blue/25"
-              >
-                {{ evento.cta_texto || 'Registrarme' }}
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </a>
-            </div>
-
-            <!-- Attendees stat — right side -->
-            <div
-              v-if="evento.asistentes"
-              data-hero-reveal
-              class="flex flex-col items-start gap-1 md:items-end md:text-right"
-            >
-              <span class="font-agency text-[clamp(3.5rem,9vw,7rem)] leading-none tracking-[-0.04em] text-white">
-                {{ evento.asistentes }}+
-              </span>
-              <span class="text-[11px] uppercase tracking-[0.25em] text-white/40">
-                Asistentes
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Scroll indicator -->
-      <div class="absolute bottom-6 left-1/2 z-10 -translate-x-1/2">
-        <div class="flex flex-col items-center gap-2">
-          <span class="text-[9px] uppercase tracking-[0.35em] text-white/15">Scroll</span>
-          <div class="h-8 w-px bg-gradient-to-b from-white/20 to-transparent" />
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════════════════════════════════
-         2. STICKY INFO BAR
-         ═══════════════════════════════════════════ -->
-    <Transition
-      enter-active-class="transition-transform duration-300 ease-out"
-      leave-active-class="transition-transform duration-200 ease-in"
-      enter-from-class="-translate-y-full"
-      leave-to-class="-translate-y-full"
-    >
+      <!-- Gradient: heavier for upcoming (text readability), lighter for past (show the memory) -->
       <div
-        v-show="showStickyBar"
-        ref="stickyBarRef"
-        class="fixed inset-x-0 top-0 z-40 border-b border-white/5 bg-arn-dark/95 backdrop-blur-md"
-      >
-        <div class="mx-auto flex max-w-(--container-site) items-center justify-between px-6 py-3 lg:px-8">
-          <div class="flex items-center gap-6">
-            <h2 class="font-agency text-lg uppercase tracking-[-0.01em] text-white">
-              {{ evento.titulo }}
-            </h2>
-            <div class="hidden items-center gap-4 text-[11px] uppercase tracking-[0.15em] text-white/35 md:flex">
-              <span>{{ evento.fecha }}</span>
-              <span v-if="evento.hora" class="text-white/20">{{ evento.hora }}</span>
-              <span v-if="evento.ubicacion" class="text-white/20">{{ evento.ubicacion }}</span>
-            </div>
-          </div>
-          <a
-            v-if="(isUpcoming || isActive) && evento.cta_url"
-            :href="evento.cta_url"
-            target="_blank"
-            rel="noopener"
-            class="bg-arn-blue px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white transition-colors hover:bg-arn-blue/85"
-          >
-            {{ evento.cta_texto || 'Registrarme' }}
-          </a>
-          <NuxtLink
-            v-else
-            to="/#eventos"
-            class="text-[11px] uppercase tracking-[0.15em] text-white/40 transition-colors hover:text-white"
-          >
-            Todas las experiencias
-          </NuxtLink>
-        </div>
-      </div>
-    </Transition>
+        :class="[
+          'absolute inset-0',
+          isPast
+            ? 'bg-gradient-to-t from-arn-dark via-arn-dark/40 to-arn-dark/60'
+            : 'bg-gradient-to-b from-arn-dark/80 via-arn-dark/70 to-arn-dark/90'
+        ]"
+      />
 
-    <!-- ═══════════════════════════════════════════
-         3. SOBRE EL EVENTO — Editorial description
-         ═══════════════════════════════════════════ -->
-    <section class="bg-white py-20 md:py-28">
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <div data-scroll-reveal class="grid gap-16 lg:grid-cols-[1fr_380px] lg:gap-24">
-          <!-- Main content -->
-          <div>
-            <div class="flex items-center gap-4">
-              <div class="h-px w-10 bg-arn-blue md:w-16" />
-              <span class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
-                Sobre el evento
-              </span>
-            </div>
+      <div class="relative w-full px-6 lg:px-8">
+        <div class="mx-auto max-w-5xl">
 
-            <!-- Editorial description — generous typography -->
-            <p class="mt-8 text-[clamp(1.125rem,2vw,1.375rem)] leading-[1.85] text-arn-gray-700">
-              {{ evento.descripcion }}
+          <!-- UPCOMING/ACTIVE: The tagline IS the hero — philosophical, bold -->
+          <template v-if="isLive">
+            <p
+              data-hook-reveal
+              class="text-[11px] uppercase tracking-[0.35em] text-arn-blue"
+            >
+              {{ evento.fecha }} <span v-if="evento.ubicacion" class="text-white/25">&mdash; {{ evento.ubicacion }}</span>
             </p>
 
-            <!-- Highlights as visual grid -->
-            <div v-if="highlights.length" class="mt-14">
-              <h3 class="text-[11px] font-semibold uppercase tracking-[0.25em] text-arn-gray-500">
-                Momentos clave
-              </h3>
-              <div class="mt-6 grid gap-4 sm:grid-cols-2">
-                <div
-                  v-for="(highlight, i) in highlights"
-                  :key="i"
-                  class="group flex gap-4 border-l-2 border-arn-gray-100 py-3 pl-5 transition-colors hover:border-arn-blue"
-                >
-                  <span class="font-agency text-2xl leading-none text-arn-blue/30 transition-colors group-hover:text-arn-blue">
-                    {{ String(i + 1).padStart(2, '0') }}
-                  </span>
-                  <span class="text-[15px] leading-[1.65] text-arn-gray-700">
-                    {{ highlight }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Sidebar — event details -->
-          <aside class="space-y-6 lg:sticky lg:top-28 lg:self-start">
-            <!-- Details card -->
-            <div class="border border-arn-gray-100 p-7">
-              <h3 class="text-[11px] font-semibold uppercase tracking-[0.25em] text-arn-gray-500">
-                Detalles
-              </h3>
-              <dl class="mt-6 space-y-5">
-                <div>
-                  <dt class="text-[10px] uppercase tracking-[0.2em] text-arn-gray-300">Fecha</dt>
-                  <dd class="mt-1 text-sm font-medium text-arn-dark">{{ evento.fecha }}</dd>
-                </div>
-                <div v-if="evento.hora">
-                  <dt class="text-[10px] uppercase tracking-[0.2em] text-arn-gray-300">Horario</dt>
-                  <dd class="mt-1 text-sm font-medium text-arn-dark">{{ evento.hora }}</dd>
-                </div>
-                <div v-if="evento.ubicacion">
-                  <dt class="text-[10px] uppercase tracking-[0.2em] text-arn-gray-300">Ubicacion</dt>
-                  <dd class="mt-1 text-sm font-medium text-arn-dark">{{ evento.ubicacion }}</dd>
-                </div>
-                <div v-if="evento.asistentes">
-                  <dt class="text-[10px] uppercase tracking-[0.2em] text-arn-gray-300">Asistentes</dt>
-                  <dd class="mt-1 text-sm font-medium text-arn-dark">{{ evento.asistentes }}+ personas</dd>
-                </div>
-                <div>
-                  <dt class="text-[10px] uppercase tracking-[0.2em] text-arn-gray-300">Estado</dt>
-                  <dd class="mt-1">
-                    <span
-                      :class="[
-                        'inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.1em]',
-                        evento.estado === 'activo' ? 'bg-arn-blue/10 text-arn-blue' :
-                        evento.estado === 'proximo' ? 'bg-amber-50 text-amber-600' :
-                        'bg-arn-gray-50 text-arn-gray-500'
-                      ]"
-                    >
-                      {{ evento.estado === 'activo' ? 'Activo' : evento.estado === 'proximo' ? 'Próximo' : 'Finalizado' }}
-                    </span>
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <!-- CTA card -->
-            <div
-              v-if="(isUpcoming || isActive) && evento.cta_url"
-              class="bg-arn-dark p-7"
+            <!-- Tagline as massive spatial element -->
+            <h1
+              v-if="evento.tagline"
+              data-hook-reveal
+              class="mt-6 font-agency text-[clamp(2.5rem,8vw,6.5rem)] uppercase leading-[0.88] tracking-[-0.03em] text-white"
             >
-              <p class="text-sm leading-relaxed text-white/50">
-                No te pierdas esta experiencia. Reserva tu lugar y se parte del movimiento.
-              </p>
-              <a
-                :href="evento.cta_url"
-                target="_blank"
-                rel="noopener"
-                class="mt-5 inline-flex w-full items-center justify-center gap-2 bg-arn-blue px-5 py-3.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-white transition-colors hover:bg-arn-blue/85"
-              >
-                {{ evento.cta_texto || 'Registrarme' }}
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </a>
-            </div>
-
-            <!-- Join CTA for past events -->
-            <div
-              v-if="evento.estado === 'pasado'"
-              class="bg-arn-dark p-7"
+              {{ evento.tagline.replace(/·/g, '\n') }}
+            </h1>
+            <h1
+              v-else
+              data-hook-reveal
+              class="mt-6 font-agency text-[clamp(2.5rem,8vw,6.5rem)] uppercase leading-[0.88] tracking-[-0.03em] text-white"
             >
-              <p class="text-sm leading-relaxed text-white/50">
-                ¿Quieres ser parte de la proxima edicion?
-              </p>
-              <NuxtLink
-                to="/#membresia"
-                class="mt-5 inline-flex w-full items-center justify-center bg-arn-blue px-5 py-3.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-white transition-colors hover:bg-arn-blue/85"
-              >
-                Unete al ARN
-              </NuxtLink>
-            </div>
-          </aside>
+              {{ evento.titulo }}
+            </h1>
+
+            <!-- Subtitle — the event name (secondary to the idea) -->
+            <p
+              data-hook-reveal
+              class="mt-8 text-[13px] font-light tracking-[0.05em] text-white/40"
+            >
+              {{ evento.titulo }}
+              <span v-if="evento.hora" class="ml-3 text-white/20">{{ evento.hora }}</span>
+            </p>
+
+            <!-- Single CTA -->
+            <a
+              v-if="evento.cta_url"
+              data-hook-reveal
+              :href="evento.cta_url"
+              target="_blank"
+              rel="noopener"
+              class="mt-10 inline-flex items-center gap-3 bg-arn-blue px-8 py-4 text-[13px] font-semibold uppercase tracking-[0.15em] text-white transition-all hover:bg-arn-blue/85 hover:shadow-lg hover:shadow-arn-blue/25"
+            >
+              {{ evento.cta_texto || 'Reserva tu lugar' }}
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </a>
+          </template>
+
+          <!-- PAST: The memory IS the hero — title large, reflective -->
+          <template v-else>
+            <p
+              data-hook-reveal
+              class="text-[11px] uppercase tracking-[0.35em] text-white/30"
+            >
+              {{ evento.fecha }} <span v-if="evento.ubicacion">&mdash; {{ evento.ubicacion }}</span>
+            </p>
+
+            <h1
+              data-hook-reveal
+              class="mt-6 font-agency text-[clamp(3rem,10vw,8rem)] uppercase leading-[0.85] tracking-[-0.04em] text-white"
+            >
+              {{ evento.titulo }}
+            </h1>
+
+            <p
+              v-if="evento.tagline"
+              data-hook-reveal
+              class="mt-6 text-[13px] uppercase tracking-[0.2em] text-arn-blue/70"
+            >
+              {{ evento.tagline }}
+            </p>
+          </template>
+
         </div>
+      </div>
+
+      <!-- Scroll indicator — minimal -->
+      <div class="absolute bottom-8 left-1/2 -translate-x-1/2">
+        <div class="h-10 w-px bg-gradient-to-b from-white/15 to-transparent" />
       </div>
     </section>
 
-    <!-- ═══════════════════════════════════════════
-         4. PROGRAMA / AGENDA — Vertical timeline
-         ═══════════════════════════════════════════ -->
-    <section v-if="programa.length" class="bg-arn-gray-50 py-20 md:py-28">
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <div data-scroll-reveal class="flex items-center gap-4">
-          <div class="h-px w-10 bg-arn-blue md:w-16" />
-          <span class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
-            Programa
-          </span>
+
+    <!-- ═══════════════════════════════════════════════════
+         ZONE 2: THE EXPERIENCE — what makes this event unique
+         Pillars, not paragraphs. Interweaved with imagery.
+         ═══════════════════════════════════════════════════ -->
+    <section class="bg-white py-24 md:py-32">
+      <div class="mx-auto max-w-5xl px-6 lg:px-8">
+
+        <!-- Editorial lead-in — the description as a pull quote, not a paragraph -->
+        <div data-zone-reveal class="mx-auto max-w-3xl text-center">
+          <p class="text-[clamp(1.15rem,2.2vw,1.5rem)] leading-[1.8] text-arn-gray-700">
+            {{ evento.descripcion }}
+          </p>
         </div>
 
-        <h2 data-scroll-reveal class="mt-6 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
-          Agenda del evento
-        </h2>
+        <!-- Experience pillars — highlight items become the story structure -->
+        <div v-if="highlights.length" class="mt-20 md:mt-28">
+          <div class="grid gap-px bg-arn-gray-100 md:grid-cols-3">
+            <div
+              v-for="(highlight, i) in highlights"
+              :key="i"
+              data-pillar
+              class="group relative bg-white p-8 md:p-10"
+            >
+              <!-- Big number as spatial element -->
+              <span class="font-agency text-[4rem] leading-none tracking-[-0.04em] text-arn-gray-50 transition-colors duration-500 group-hover:text-arn-blue/10 md:text-[5rem]">
+                {{ String(i + 1).padStart(2, '0') }}
+              </span>
 
-        <!-- Timeline -->
-        <div class="mt-12 md:mt-16">
-          <div class="relative">
-            <!-- Vertical line -->
-            <div class="absolute bottom-0 left-[155px] top-0 hidden w-px bg-arn-gray-200 md:block" />
+              <p class="-mt-4 text-[15px] leading-[1.7] text-arn-gray-700 md:-mt-6">
+                {{ highlight }}
+              </p>
 
-            <div class="space-y-0">
-              <div
-                v-for="(item, i) in programa"
-                :key="i"
-                data-timeline-item
-                class="group relative grid gap-4 py-6 md:grid-cols-[140px_1fr] md:gap-12"
-                :class="i !== programa.length - 1 ? 'border-b border-arn-gray-100' : ''"
-              >
-                <!-- Time -->
-                <div class="flex items-start gap-3 md:justify-end md:text-right">
-                  <span class="font-agency text-lg uppercase tracking-[-0.01em] text-arn-blue md:text-base">
-                    {{ item.hora }}
-                  </span>
-                </div>
-
-                <!-- Timeline dot -->
-                <div class="absolute left-[151px] top-8 hidden h-2.5 w-2.5 rounded-full border-2 border-arn-gray-200 bg-white transition-colors group-hover:border-arn-blue group-hover:bg-arn-blue md:block" />
-
-                <!-- Content -->
-                <div>
-                  <h3 class="text-base font-semibold text-arn-dark md:text-lg">
-                    {{ item.titulo }}
-                  </h3>
-                  <p class="mt-1.5 text-sm leading-relaxed text-arn-gray-500">
-                    {{ item.descripcion }}
-                  </p>
-                </div>
-              </div>
+              <!-- Accent line on hover -->
+              <div class="absolute bottom-0 left-0 h-0.5 w-0 bg-arn-blue transition-all duration-500 group-hover:w-full" />
             </div>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- ═══════════════════════════════════════════
-         5. GALERIA DE FOTOS — Masonry-style grid
-         ═══════════════════════════════════════════ -->
-    <section v-if="galeria.length" class="bg-white py-20 md:py-28">
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <div data-scroll-reveal class="flex items-center gap-4">
-          <div class="h-px w-10 bg-arn-blue md:w-16" />
-          <span class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
-            Galería
-          </span>
-        </div>
-
-        <h2 data-scroll-reveal class="mt-6 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
-          Momentos del evento
-        </h2>
-
-        <!-- Photo grid — asymmetric editorial layout -->
-        <div class="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Interwoven image — ONE editorial image breaks the text flow -->
+        <div
+          v-if="galeria.length"
+          data-zone-reveal
+          class="-mx-6 mt-20 md:-mx-0 md:mt-28"
+        >
           <button
-            v-for="(img, i) in galeria"
-            :key="i"
-            data-gallery-item
-            class="group relative overflow-hidden bg-arn-gray-50"
-            :class="[
-              i === 0 ? 'sm:col-span-2 sm:row-span-2' : '',
-              i === 0 ? 'aspect-[4/3] sm:aspect-auto' : 'aspect-[4/3]'
-            ]"
-            @click="openLightbox(i)"
+            class="group relative block w-full overflow-hidden"
+            @click="openLightbox(0)"
           >
             <img
-              :src="img"
-              :alt="`${evento.titulo} — foto ${i + 1}`"
-              class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
+              :src="galeria[0]"
+              :alt="evento.titulo"
+              class="aspect-[21/9] w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
             />
-            <div class="absolute inset-0 bg-arn-dark/0 transition-colors duration-300 group-hover:bg-arn-dark/20" />
-            <div class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-              </svg>
-            </div>
+            <div class="absolute inset-0 bg-arn-dark/0 transition-colors duration-500 group-hover:bg-arn-dark/10" />
           </button>
         </div>
       </div>
     </section>
 
-    <!-- Lightbox overlay -->
+
+    <!-- ═══════════════════════════════════════════════════
+         ZONE 3: THE PROOF — schedule highlights + media mosaic
+         Content type depends on event state
+         ═══════════════════════════════════════════════════ -->
+
+    <!-- 3A: Schedule highlights for upcoming/active (editorial cards, not timeline) -->
+    <section
+      v-if="isLive && programaHighlights.length"
+      class="bg-arn-gray-50 py-24 md:py-32"
+    >
+      <div class="mx-auto max-w-5xl px-6 lg:px-8">
+        <div data-zone-reveal>
+          <p class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
+            Lo que te espera
+          </p>
+          <h2 class="mt-4 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
+            Programa
+          </h2>
+        </div>
+
+        <!-- Horizontal scrolling cards on mobile, grid on desktop -->
+        <div class="mt-12 flex gap-4 overflow-x-auto pb-4 md:mt-16 md:grid md:grid-cols-2 md:gap-6 md:overflow-visible md:pb-0 lg:grid-cols-4">
+          <div
+            v-for="(item, i) in programaHighlights"
+            :key="i"
+            data-pillar
+            class="group min-w-[260px] flex-shrink-0 border-t-2 border-arn-gray-200 bg-white p-6 transition-colors hover:border-arn-blue md:min-w-0"
+          >
+            <span class="font-agency text-sm uppercase tracking-[0.05em] text-arn-blue">
+              {{ item.hora }}
+            </span>
+            <h3 class="mt-3 text-base font-semibold leading-tight text-arn-dark">
+              {{ item.titulo }}
+            </h3>
+            <p class="mt-2 text-[13px] leading-relaxed text-arn-gray-500">
+              {{ item.descripcion }}
+            </p>
+          </div>
+        </div>
+
+        <!-- "Full program" hint if more items exist -->
+        <p
+          v-if="programa.length > 4"
+          class="mt-8 text-center text-[12px] text-arn-gray-500"
+        >
+          Y {{ programa.length - 4 }} actividades mas durante el dia
+        </p>
+      </div>
+    </section>
+
+    <!-- 3B: Documentary mosaic for past events (gallery + video merged) -->
+    <section
+      v-if="isPast && (galeria.length > 1 || videoId)"
+      class="bg-arn-gray-50 py-24 md:py-32"
+    >
+      <div class="mx-auto max-w-6xl px-6 lg:px-8">
+        <div data-zone-reveal>
+          <p class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
+            Momentos
+          </p>
+          <h2 class="mt-4 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
+            Lo que vivimos
+          </h2>
+        </div>
+
+        <!-- Mosaic: video + photos interwoven -->
+        <div class="mt-12 grid gap-3 md:mt-16 md:grid-cols-12 md:grid-rows-2">
+          <!-- Video takes hero position if it exists -->
+          <div
+            v-if="videoId"
+            data-mosaic
+            class="overflow-hidden bg-arn-dark md:col-span-7 md:row-span-2"
+          >
+            <div class="relative aspect-video w-full">
+              <iframe
+                :src="`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`"
+                title="Video del evento"
+                class="absolute inset-0 h-full w-full"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+                loading="lazy"
+              />
+            </div>
+          </div>
+
+          <!-- Photos fill the remaining space -->
+          <button
+            v-for="(img, i) in galeria.slice(1, videoId ? 5 : 7)"
+            :key="i"
+            data-mosaic
+            class="group relative overflow-hidden bg-arn-gray-100"
+            :class="[
+              videoId ? 'md:col-span-5' : (i === 0 ? 'md:col-span-8 md:row-span-2' : 'md:col-span-4'),
+              !videoId && i === 0 ? 'aspect-[4/3] md:aspect-auto' : 'aspect-[4/3]'
+            ]"
+            @click="openLightbox(i + 1)"
+          >
+            <img
+              :src="img"
+              :alt="`${evento.titulo} — foto ${i + 2}`"
+              class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-arn-dark/0 transition-colors duration-300 group-hover:bg-arn-dark/15" />
+          </button>
+        </div>
+
+        <!-- View all photos (if many) -->
+        <button
+          v-if="galeria.length > 5"
+          class="mx-auto mt-6 flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] text-arn-gray-500 transition-colors hover:text-arn-dark"
+          @click="openLightbox(0)"
+        >
+          Ver las {{ galeria.length }} fotos
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16m-7 6h7" />
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Also show schedule for past events, but as compact reference -->
+    <section
+      v-if="isPast && programa.length"
+      class="border-t border-arn-gray-100 bg-white py-20 md:py-24"
+    >
+      <div class="mx-auto max-w-5xl px-6 lg:px-8">
+        <div data-zone-reveal>
+          <p class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
+            Programa
+          </p>
+          <h2 class="mt-4 font-agency text-[clamp(1.75rem,3vw,2.5rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
+            Agenda del evento
+          </h2>
+        </div>
+
+        <div class="mt-10 grid gap-px bg-arn-gray-100 md:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="(item, i) in programa"
+            :key="i"
+            class="bg-white p-5"
+          >
+            <span class="font-agency text-sm text-arn-blue">{{ item.hora }}</span>
+            <h3 class="mt-1 text-sm font-semibold text-arn-dark">{{ item.titulo }}</h3>
+            <p class="mt-1 text-[12px] leading-relaxed text-arn-gray-500">{{ item.descripcion }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════════════
+         ZONE 4: THE IMPACT — one powerful number with narrative
+         Small, breathing room. Not a full section.
+         ═══════════════════════════════════════════════════ -->
+    <section
+      v-if="evento.asistentes"
+      ref="impactRef"
+      class="relative overflow-hidden bg-arn-dark"
+    >
+      <!-- Faded event image as texture -->
+      <img
+        v-if="evento.imagen_url"
+        :src="evento.imagen_url"
+        :alt="evento.titulo"
+        class="absolute inset-0 h-full w-full object-cover opacity-[0.07]"
+      />
+
+      <div class="relative px-6 py-24 md:py-32 lg:px-8">
+        <div class="mx-auto max-w-4xl text-center">
+          <div data-zone-reveal>
+            <!-- ONE number. ONE sentence. That's it. -->
+            <span
+              :data-impact-count="evento.asistentes"
+              class="font-agency text-[clamp(5rem,15vw,12rem)] leading-none tracking-[-0.05em] text-white"
+            >
+              0
+            </span>
+
+            <p class="mx-auto mt-4 max-w-lg text-[clamp(1rem,1.8vw,1.25rem)] leading-[1.7] text-white/50">
+              <template v-if="isPast">
+                personas se reunieron para activar su proposito y construir una red de transformacion
+              </template>
+              <template v-else>
+                personas ya confirmaron su lugar. Faltas tu.
+              </template>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════════════
+         ZONE 5: THE INVITATION — contextual, singular CTA
+         Different for upcoming vs past
+         ═══════════════════════════════════════════════════ -->
+    <section class="bg-white py-24 md:py-32">
+      <div class="mx-auto max-w-3xl px-6 text-center lg:px-8">
+        <div data-zone-reveal>
+          <!-- UPCOMING: Registration -->
+          <template v-if="isLive && evento.cta_url">
+            <h2 class="font-agency text-[clamp(2rem,5vw,3.5rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
+              Se parte de {{ evento.titulo }}
+            </h2>
+            <p class="mx-auto mt-5 max-w-md text-base leading-relaxed text-arn-gray-500">
+              {{ evento.fecha }}<span v-if="evento.ubicacion"> &mdash; {{ evento.ubicacion }}</span>
+            </p>
+            <a
+              :href="evento.cta_url"
+              target="_blank"
+              rel="noopener"
+              class="mt-10 inline-flex items-center gap-3 bg-arn-dark px-10 py-4 text-[13px] font-semibold uppercase tracking-[0.15em] text-white transition-all hover:bg-arn-blue"
+            >
+              {{ evento.cta_texto || 'Reserva tu lugar' }}
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </a>
+          </template>
+
+          <!-- PAST: Join the movement -->
+          <template v-else>
+            <p class="text-[11px] uppercase tracking-[0.3em] text-arn-blue">
+              La historia continua
+            </p>
+            <h2 class="mt-5 font-agency text-[clamp(2rem,5vw,3.5rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
+              Quieres ser parte de lo que viene?
+            </h2>
+            <NuxtLink
+              to="/#membresia"
+              class="mt-10 inline-flex items-center gap-3 bg-arn-dark px-10 py-4 text-[13px] font-semibold uppercase tracking-[0.15em] text-white transition-all hover:bg-arn-blue"
+            >
+              Unete al movimiento
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </NuxtLink>
+          </template>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════════════
+         ZONE 6: THE CONTINUITY — event timeline ribbon
+         Positions this event in the larger movement story
+         ═══════════════════════════════════════════════════ -->
+    <section
+      v-if="allEvents.length > 1"
+      class="border-t border-arn-gray-100 bg-arn-gray-50 py-16 md:py-20"
+    >
+      <div class="mx-auto max-w-5xl px-6 lg:px-8">
+        <p class="text-center text-[11px] uppercase tracking-[0.3em] text-arn-gray-500">
+          El movimiento
+        </p>
+
+        <!-- Horizontal timeline ribbon -->
+        <div class="relative mt-10">
+          <!-- Connecting line -->
+          <div class="absolute left-0 right-0 top-[19px] hidden h-px bg-arn-gray-200 md:block" />
+
+          <div class="flex flex-col items-center gap-6 md:flex-row md:justify-between">
+            <NuxtLink
+              v-for="ev in allEvents"
+              :key="ev.id"
+              :to="`/eventos/${ev.id}`"
+              data-timeline-node
+              class="group relative flex flex-col items-center gap-3 text-center"
+              :class="ev.id === evento.id ? 'pointer-events-none' : ''"
+            >
+              <!-- Node dot -->
+              <div
+                :class="[
+                  'relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all',
+                  ev.id === evento.id
+                    ? 'border-arn-blue bg-arn-blue'
+                    : 'border-arn-gray-200 bg-white group-hover:border-arn-blue'
+                ]"
+              >
+                <span
+                  :class="[
+                    'font-agency text-xs',
+                    ev.id === evento.id ? 'text-white' : 'text-arn-gray-500 group-hover:text-arn-blue'
+                  ]"
+                >
+                  {{ ev.orden }}
+                </span>
+              </div>
+
+              <!-- Label -->
+              <div>
+                <p
+                  :class="[
+                    'text-[11px] uppercase tracking-[0.15em]',
+                    ev.id === evento.id ? 'font-semibold text-arn-dark' : 'text-arn-gray-500 group-hover:text-arn-dark'
+                  ]"
+                >
+                  {{ ev.titulo }}
+                </p>
+                <p class="mt-0.5 text-[10px] text-arn-gray-300">
+                  {{ ev.fecha }}
+                </p>
+              </div>
+            </NuxtLink>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ═══════════════════════════════════════════════════
+         LIGHTBOX — shared for all gallery images
+         ═══════════════════════════════════════════════════ -->
     <Teleport to="body">
       <Transition
         enter-active-class="transition-opacity duration-300"
@@ -655,11 +756,10 @@ onUnmounted(() => {
         leave-to-class="opacity-0"
       >
         <div
-          v-if="lightboxOpen"
+          v-if="lightboxOpen && galeria.length"
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
           @click.self="closeLightbox"
         >
-          <!-- Close -->
           <button
             class="absolute right-4 top-4 z-10 p-2 text-white/60 transition-colors hover:text-white"
             @click="closeLightbox"
@@ -669,7 +769,6 @@ onUnmounted(() => {
             </svg>
           </button>
 
-          <!-- Prev -->
           <button
             v-if="galeria.length > 1"
             class="absolute left-4 z-10 p-2 text-white/40 transition-colors hover:text-white"
@@ -680,14 +779,12 @@ onUnmounted(() => {
             </svg>
           </button>
 
-          <!-- Image -->
           <img
             :src="galeria[lightboxIndex]"
             :alt="`${evento.titulo} — foto ${lightboxIndex + 1}`"
             class="max-h-[85vh] max-w-[90vw] object-contain"
           />
 
-          <!-- Next -->
           <button
             v-if="galeria.length > 1"
             class="absolute right-4 z-10 p-2 text-white/40 transition-colors hover:text-white"
@@ -698,7 +795,6 @@ onUnmounted(() => {
             </svg>
           </button>
 
-          <!-- Counter -->
           <div class="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] uppercase tracking-[0.2em] text-white/30">
             {{ lightboxIndex + 1 }} / {{ galeria.length }}
           </div>
@@ -706,249 +802,5 @@ onUnmounted(() => {
       </Transition>
     </Teleport>
 
-    <!-- ═══════════════════════════════════════════
-         6. VIDEO — YouTube embed
-         ═══════════════════════════════════════════ -->
-    <section v-if="videoId" class="bg-arn-gray-50 py-20 md:py-28">
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <div data-scroll-reveal class="flex items-center gap-4">
-          <div class="h-px w-10 bg-arn-blue md:w-16" />
-          <span class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
-            Video
-          </span>
-        </div>
-
-        <h2 data-scroll-reveal class="mt-6 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
-          Revive la experiencia
-        </h2>
-
-        <div data-scroll-reveal class="mt-12 overflow-hidden bg-arn-dark">
-          <div class="relative aspect-video w-full">
-            <iframe
-              :src="`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`"
-              title="Video del evento"
-              class="absolute inset-0 h-full w-full"
-              frameborder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowfullscreen
-              loading="lazy"
-            />
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════════════════════════════════
-         7. IMPACTO / STATS — Dark section with counters
-         ═══════════════════════════════════════════ -->
-    <section
-      v-if="evento.asistentes"
-      ref="statsRef"
-      class="bg-arn-dark py-20 md:py-28"
-    >
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <div data-scroll-reveal class="flex items-center gap-4">
-          <div class="h-px w-10 bg-arn-blue md:w-16" />
-          <span class="text-[11px] font-medium uppercase tracking-[0.3em] text-white/50">
-            Impacto
-          </span>
-        </div>
-
-        <h2 data-scroll-reveal class="mt-6 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-white">
-          Numeros que hablan
-        </h2>
-
-        <div data-scroll-reveal class="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          <!-- Attendees -->
-          <div class="border-l-2 border-arn-blue/30 pl-6">
-            <span
-              :data-count="evento.asistentes"
-              class="font-agency text-[clamp(2.5rem,6vw,4rem)] leading-none tracking-[-0.03em] text-white"
-            >
-              0
-            </span>
-            <span class="font-agency text-[clamp(2.5rem,6vw,4rem)] leading-none text-arn-blue">+</span>
-            <p class="mt-2 text-[11px] uppercase tracking-[0.2em] text-white/40">Asistentes</p>
-          </div>
-
-          <!-- Highlights count -->
-          <div v-if="highlights.length" class="border-l-2 border-arn-blue/30 pl-6">
-            <span
-              :data-count="highlights.length"
-              class="font-agency text-[clamp(2.5rem,6vw,4rem)] leading-none tracking-[-0.03em] text-white"
-            >
-              0
-            </span>
-            <p class="mt-2 text-[11px] uppercase tracking-[0.2em] text-white/40">Momentos clave</p>
-          </div>
-
-          <!-- Program items -->
-          <div v-if="programa.length" class="border-l-2 border-arn-blue/30 pl-6">
-            <span
-              :data-count="programa.length"
-              class="font-agency text-[clamp(2.5rem,6vw,4rem)] leading-none tracking-[-0.03em] text-white"
-            >
-              0
-            </span>
-            <p class="mt-2 text-[11px] uppercase tracking-[0.2em] text-white/40">Actividades</p>
-          </div>
-
-          <!-- Gallery -->
-          <div v-if="galeria.length" class="border-l-2 border-arn-blue/30 pl-6">
-            <span
-              :data-count="galeria.length"
-              class="font-agency text-[clamp(2.5rem,6vw,4rem)] leading-none tracking-[-0.03em] text-white"
-            >
-              0
-            </span>
-            <p class="mt-2 text-[11px] uppercase tracking-[0.2em] text-white/40">Fotos</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════════════════════════════════
-         8. CTA DE REGISTRO — For upcoming/active events
-         ═══════════════════════════════════════════ -->
-    <section
-      v-if="(isUpcoming || isActive) && evento.cta_url"
-      class="relative overflow-hidden bg-arn-dark py-24 md:py-32"
-    >
-      <!-- Decorative gradient -->
-      <div class="absolute inset-0 bg-gradient-to-br from-arn-blue/10 via-transparent to-arn-blue/5" />
-
-      <div class="relative mx-auto max-w-(--container-site) px-6 text-center lg:px-8">
-        <p data-scroll-reveal class="text-[11px] uppercase tracking-[0.3em] text-arn-blue">
-          Se parte del movimiento
-        </p>
-        <h2 data-scroll-reveal class="mx-auto mt-5 max-w-3xl font-agency text-[clamp(2.5rem,5vw,4rem)] uppercase leading-[0.92] tracking-[-0.02em] text-white">
-          No te pierdas {{ evento.titulo }}
-        </h2>
-        <p data-scroll-reveal class="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/45">
-          Una experiencia que transforma perspectivas y conecta personas con un mismo proposito.
-        </p>
-        <a
-          :href="evento.cta_url"
-          target="_blank"
-          rel="noopener"
-          data-scroll-reveal
-          class="mt-10 inline-flex items-center gap-3 bg-arn-blue px-10 py-4 text-[14px] font-semibold uppercase tracking-[0.12em] text-white transition-all hover:bg-arn-blue/85 hover:shadow-xl hover:shadow-arn-blue/20"
-        >
-          {{ evento.cta_texto || 'Reserva tu lugar' }}
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-          </svg>
-        </a>
-      </div>
-    </section>
-
-    <!-- ═══════════════════════════════════════════
-         9. OTROS EVENTOS — Related events cards
-         ═══════════════════════════════════════════ -->
-    <section v-if="relatedEvents.length" class="bg-white py-20 md:py-28">
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <div data-scroll-reveal class="flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-4">
-              <div class="h-px w-10 bg-arn-blue md:w-16" />
-              <span class="text-[11px] font-medium uppercase tracking-[0.3em] text-arn-gray-500">
-                Más experiencias
-              </span>
-            </div>
-            <h2 class="mt-6 font-agency text-[clamp(2rem,4vw,3rem)] uppercase leading-[0.92] tracking-[-0.02em] text-arn-dark">
-              Otros eventos
-            </h2>
-          </div>
-          <NuxtLink
-            to="/#eventos"
-            class="hidden items-center gap-2 text-[12px] uppercase tracking-[0.15em] text-arn-gray-500 transition-colors hover:text-arn-dark md:flex"
-          >
-            Ver todos
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </NuxtLink>
-        </div>
-
-        <div data-scroll-reveal class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <NuxtLink
-            v-for="related in relatedEvents.slice(0, 3)"
-            :key="related.id"
-            :to="`/eventos/${related.id}`"
-            class="group relative overflow-hidden bg-arn-dark"
-          >
-            <div class="aspect-[3/4]">
-              <img
-                v-if="related.imagen_url"
-                :src="related.imagen_url"
-                :alt="related.titulo"
-                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                loading="lazy"
-              />
-              <div class="absolute inset-0 bg-gradient-to-t from-arn-dark via-arn-dark/50 to-transparent" />
-            </div>
-
-            <div class="absolute inset-x-0 bottom-0 p-6">
-              <div class="flex items-center gap-3">
-                <span class="inline-block border border-white/20 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.2em] text-white/50">
-                  {{ related.fecha }}
-                </span>
-                <span
-                  v-if="related.estado !== 'pasado'"
-                  :class="[
-                    'inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]',
-                    related.estado === 'activo' ? 'bg-arn-blue/20 text-arn-blue' : 'bg-amber-500/20 text-amber-400'
-                  ]"
-                >
-                  {{ related.estado === 'activo' ? 'Activo' : 'Próximo' }}
-                </span>
-              </div>
-              <h3 class="mt-3 font-agency text-[clamp(1.5rem,3vw,2rem)] uppercase leading-[0.92] text-white">
-                {{ related.titulo }}
-              </h3>
-              <p v-if="related.ubicacion" class="mt-2 text-[12px] text-white/30">
-                {{ related.ubicacion }}
-              </p>
-              <span class="mt-4 inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.15em] text-arn-blue transition-colors group-hover:text-white">
-                Ver evento
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </span>
-            </div>
-          </NuxtLink>
-        </div>
-
-        <!-- Mobile link -->
-        <div class="mt-8 text-center md:hidden">
-          <NuxtLink
-            to="/#eventos"
-            class="inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.15em] text-arn-gray-500"
-          >
-            Ver todas las experiencias
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </NuxtLink>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════════════════════════════════
-         BACK NAVIGATION
-         ═══════════════════════════════════════════ -->
-    <section class="border-t border-arn-gray-100 bg-white py-10">
-      <div class="mx-auto max-w-(--container-site) px-6 lg:px-8">
-        <NuxtLink
-          to="/#eventos"
-          class="group inline-flex items-center gap-3 text-sm text-arn-gray-500 transition-colors hover:text-arn-dark"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-          Volver a experiencias
-        </NuxtLink>
-      </div>
-    </section>
   </div>
 </template>

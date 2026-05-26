@@ -4,6 +4,13 @@ export interface ProgramaItem {
   descripcion: string;
 }
 
+export interface SpeakerItem {
+  nombre: string;
+  cargo: string;
+  foto_url: string;
+  bio: string;
+}
+
 export interface Evento {
   id: number;
   titulo: string;
@@ -22,6 +29,7 @@ export interface Evento {
   video_url: string | null;
   cta_url: string | null;
   cta_texto: string | null;
+  speakers: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -40,3 +40,4 @@ server/database/*.db-shm
 # Uploads (user-generated content)
 public/uploads/*
 !public/uploads/.gitkeep
+.vercel
