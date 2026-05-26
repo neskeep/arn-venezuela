@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect x="2" y="14" width="32" height="32" rx="16" fill="none" stroke="#051a3b" stroke-width="2.5"/>
+  <text x="11" y="36" font-family="sans-serif" font-weight="800" font-size="16" fill="#1675f7">R+</text>
+  <text x="42" y="32" font-family="sans-serif" font-weight="600" font-size="15" fill="#051a3b">Red Vital</text>
+  <text x="42" y="45" font-family="sans-serif" font-weight="300" font-size="10" fill="#667085" letter-spacing="1">Foundation</text>
+</svg>

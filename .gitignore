@@ -1,0 +1,42 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+
+# Playwright MCP
+.playwright-mcp
+
+# Test results
+test-results
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# SQLite database
+*.db
+*.db-wal
+*.db-shm
+server/database/*.db
+server/database/*.db-wal
+server/database/*.db-shm
+
+# Uploads (user-generated content)
+public/uploads/*
+!public/uploads/.gitkeep
