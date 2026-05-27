@@ -63,9 +63,9 @@ onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
 
   nextTick(() => {
-    if (!sectionRef.value || !trackRef.value || !eventos.value.length) return;
+    if (!sectionRef.value || !trackRef.value || !eventos.length) return;
 
-    const totalSlides = eventos.value.length;
+    const totalSlides = eventos.length;
     const xPercent = -((totalSlides - 1) / totalSlides) * 100;
 
     gsap.to(trackRef.value, {
